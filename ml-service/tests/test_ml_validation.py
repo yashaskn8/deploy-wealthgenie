@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pytest
 from pydantic import ValidationError
@@ -5,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from feature_engineering import engineer_features, to_model_array, get_feature_names
 from schemas import PredictRequest
-from main import app, get_decision_path_description
+from main import app, get_decision_path_description, model
 
 client_instance = None
 
@@ -77,7 +78,9 @@ def test_feature_parity_train_inference():
     assert arr_serve.shape == (1, 16)
     np.testing.assert_array_equal(arr_train, arr_serve)
 
-def test_api_key_security_unauthorized(client):
+def test_api_key_security_unauthorized(client, monkeypatch):
+    # Temporarily set the API key so auth enforcement is active (in CI it's unset)
+    monkeypatch.setenv("ML_SERVICE_API_KEY", API_KEY)
     payload = {
         "age": 30,
         "annual_income": 1200000,
@@ -100,7 +103,10 @@ def test_api_key_security_unauthorized(client):
     response = client.post("/predict/enriched", json=payload, headers={"X-API-Key": "wrong_key"})
     assert response.status_code == 401
 
-def test_api_key_security_authorized(client):
+def test_api_key_security_authorized(client, monkeypatch):
+    if model is None:
+        pytest.skip("Model .pkl not available in CI — skipping authorized prediction test")
+    monkeypatch.setenv("ML_SERVICE_API_KEY", API_KEY)
     payload = {
         "age": 30,
         "annual_income": 1200000,
@@ -126,6 +132,8 @@ def test_health_endpoint(client):
     assert data["model_version"] == "2.0"
 
 def test_predict_enriched_endpoint_valid(client):
+    if model is None:
+        pytest.skip("Model .pkl not available in CI — skipping enriched prediction test")
     payload = {
         "age": 30,
         "annual_income": 1200000,
