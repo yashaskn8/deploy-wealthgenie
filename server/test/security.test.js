@@ -17,6 +17,7 @@ import { enforceJsonContentType } from '../middleware/contentType.js';
 import { errorHandler } from '../middleware/errorHandler.js';
 import { blacklistToken } from '../config/redis.js';
 import FinancialProfile from '../models/FinancialProfile.js';
+import { withServer, jsonRequest as jsonFetch } from '../test-utils/httpTestUtils.js';
 
 process.env.JWT_SECRET = 'security-test-secret';
 process.env.NODE_ENV = 'test';
@@ -42,27 +43,6 @@ function buildApp() {
   return app;
 }
 
-async function withServer(fn) {
-  const server = buildApp().listen(0);
-  await new Promise(resolve => server.once('listening', resolve));
-  try {
-    return await fn(`http://127.0.0.1:${server.address().port}`);
-  } finally {
-    await new Promise(resolve => server.close(resolve));
-  }
-}
-
-async function jsonFetch(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...(options.body ? { 'content-type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  const text = await response.text();
-  return { response, body: text ? JSON.parse(text) : null };
-}
 
 const VALID_PROFILE_BODY = {
   monthly_income: 80000,
@@ -101,7 +81,7 @@ test('Security: mass assignment fields are stripped by schema validation', async
   await ensureDb();
   const token = signToken(USER_A_ID);
 
-  await withServer(async (baseUrl) => {
+  await withServer(buildApp(), async (baseUrl) => {
     // Send a payload with unexpected fields (e.g. role, admin, userDetails)
     const { response, body } = await jsonFetch(`${baseUrl}/api/profile/build`, {
       method: 'POST',
@@ -152,7 +132,7 @@ test('Security: user B cannot modify user A profile via IDOR', async () => {
 
   const tokenB = signToken(USER_B_ID);
 
-  await withServer(async (baseUrl) => {
+  await withServer(buildApp(), async (baseUrl) => {
     // Attempt to update Profile A using User B's token
     const { response, body } = await jsonFetch(`${baseUrl}/api/profile/${profileA._id}`, {
       method: 'PUT',
@@ -184,7 +164,7 @@ test('Security: blocklisted / revoked token is rejected with 401 Unauthorized', 
   // Blacklist the token using standard blacklisting helper
   await blacklistToken(jti, 3600);
 
-  await withServer(async (baseUrl) => {
+  await withServer(buildApp(), async (baseUrl) => {
     const { response, body } = await jsonFetch(`${baseUrl}/api/profile/build`, {
       method: 'POST',
       body: JSON.stringify(VALID_PROFILE_BODY),
@@ -203,7 +183,7 @@ test('Security: expired token is rejected with 401 Unauthorized', async () => {
   // Create an already expired token (expiresIn: '0s')
   const expiredToken = signToken(USER_A_ID, crypto.randomUUID(), '0s');
 
-  await withServer(async (baseUrl) => {
+  await withServer(buildApp(), async (baseUrl) => {
     const { response, body } = await jsonFetch(`${baseUrl}/api/profile/build`, {
       method: 'POST',
       body: JSON.stringify(VALID_PROFILE_BODY),

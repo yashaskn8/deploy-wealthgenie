@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import authRoutes from '../routes/auth.js';
@@ -12,6 +12,7 @@ import marketRoutes from '../routes/market.js';
 import taxRoutes from '../routes/tax.js';
 import chatRoutes from '../routes/chatRoutes.js';
 import { errorHandler } from '../middleware/errorHandler.js';
+import { withServer, jsonRequest as jsonFetch } from '../test-utils/httpTestUtils.js';
 
 process.env.JWT_SECRET = 'route-coverage-test-secret';
 process.env.NODE_ENV = 'test';
@@ -33,30 +34,9 @@ function buildApp() {
   return app;
 }
 
-async function withServer(fn) {
-  const server = buildApp().listen(0);
-  await new Promise(resolve => server.once('listening', resolve));
-  try {
-    return await fn(`http://127.0.0.1:${server.address().port}`);
-  } finally {
-    await new Promise(resolve => server.close(resolve));
-  }
-}
-
-async function jsonFetch(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...(options.body ? { 'content-type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  const text = await response.text();
-  return { response, body: text ? JSON.parse(text) : null };
-}
 
 test('auth route rejects invalid register payload before database access', async () => {
-  await withServer(async (baseUrl) => {
+  await withServer(buildApp(), async (baseUrl) => {
     const { response, body } = await jsonFetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       body: JSON.stringify({ email: 'not-an-email' }),
@@ -69,7 +49,7 @@ test('auth route rejects invalid register payload before database access', async
 });
 
 test('protected route files enforce JWT before service/database work', async () => {
-  await withServer(async (baseUrl) => {
+  await withServer(buildApp(), async (baseUrl) => {
     const checks = [
       ['profile', 'POST', '/api/profile/build', { monthly_income: 100000, age: 35, monthly_savings: 20000 }],
       ['recommend', 'POST', '/api/recommend', { profileId: '65b000000000000000000001' }],
@@ -92,7 +72,7 @@ test('protected route files enforce JWT before service/database work', async () 
 });
 
 test('instruments route validates public query inputs', async () => {
-  await withServer(async (baseUrl) => {
+  await withServer(buildApp(), async (baseUrl) => {
     const { response, body } = await jsonFetch(`${baseUrl}/api/instruments?type=BadType`);
 
     assert.equal(response.status, 400);
@@ -101,7 +81,7 @@ test('instruments route validates public query inputs', async () => {
 });
 
 test('tax route computes and compares regimes without authentication', async () => {
-  await withServer(async (baseUrl) => {
+  await withServer(buildApp(), async (baseUrl) => {
     const compute = await jsonFetch(`${baseUrl}/api/tax/compute?income=1200000&regime=new`);
     const compare = await jsonFetch(`${baseUrl}/api/tax/compare?income=1200000`);
 

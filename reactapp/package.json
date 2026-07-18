@@ -4,9 +4,6 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node ../scripts/sync_data.js",
-    "prebuild": "node ../scripts/sync_data.js",
-    "pretypecheck": "node ../scripts/sync_data.js",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",

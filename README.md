@@ -249,6 +249,13 @@ Standardizes returns compounding algorithms:
    npm install
    ```
 
+5. **Investment Data Artifacts**
+   ```bash
+   cd ..
+   node scripts/sync_data.js --check
+   ```
+   If the check fails after editing `shared/investment_master.json`, run `node scripts/sync_data.js` and commit the updated app-local copies.
+
 ### Running Locally
 
 Run each service in separate terminal windows:

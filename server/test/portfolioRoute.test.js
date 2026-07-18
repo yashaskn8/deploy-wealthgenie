@@ -4,6 +4,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import portfolioRoutes from '../routes/portfolio.js';
 import FinancialProfile from '../models/FinancialProfile.js';
+import { closeServer, rawRequest } from '../test-utils/httpTestUtils.js';
 
 process.env.JWT_SECRET = 'portfolio-route-test-secret';
 
@@ -29,14 +30,14 @@ test('portfolio optimise route responds for all frontend-exposed strategies', as
 
   const server = app.listen(0);
   await new Promise(resolve => server.once('listening', resolve));
-  t.after(() => server.close());
+  t.after(async () => { await closeServer(server); });
 
   const token = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '1h' });
   const { port } = server.address();
   const url = `http://127.0.0.1:${port}/api/portfolio/optimise`;
 
   for (const strategy of ['min_variance', 'max_sharpe', 'risk_parity']) {
-    const response = await fetch(url, {
+    const response = await rawRequest(url, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${token}`,

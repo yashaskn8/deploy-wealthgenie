@@ -9,7 +9,7 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    
+
     services:
       mongodb:
         image: mongo:6.0
@@ -33,6 +33,11 @@ jobs:
             server/package-lock.json
             reactapp/package-lock.json
 
+      - name: Verify Investment Data Artifacts
+        run: |
+          node scripts/sync_data.js --check
+          node scripts/validate_investments.js
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -40,32 +45,27 @@ jobs:
           cache: 'pip'
           cache-dependency-path: ml-service/requirements.txt
 
-      # ── Install Backend Dependencies ──
       - name: Install Backend Dependencies
         run: |
           cd server
           npm ci
 
-      # ── Install Frontend Dependencies ──
       - name: Install Frontend Dependencies
         run: |
           cd reactapp
           npm ci
 
-      # ── Install ML Service Dependencies ──
       - name: Install ML Service Dependencies
         run: |
           cd ml-service
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # ── Lint and Code Style ──
       - name: Run Frontend Linter
         run: |
           cd reactapp
           npm run lint
 
-      # ── Type Checking ──
       - name: Run Backend Typecheck
         run: |
           cd server
@@ -76,7 +76,6 @@ jobs:
           cd reactapp
           npm run typecheck
 
-      # ── Unit and Integration Tests ──
       - name: Run Frontend Tests
         run: |
           cd reactapp
@@ -95,11 +94,11 @@ jobs:
       - name: Run ML Service Tests
         env:
           PYTHONPATH: .
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
         run: |
           cd ml-service
           python -m pytest
 
-      # ── Frontend Production Build ──
       - name: Build Frontend
         run: |
           cd reactapp
@@ -111,6 +110,9 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Verify Docker Build Context Data
+        run: node scripts/sync_data.js --check
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -147,7 +149,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ── Deploy Backend and ML Services to Railway ──
       - name: Install Railway CLI
         run: npm i -g @railway/cli
 
@@ -165,17 +166,16 @@ jobs:
           railway up --service wealthgenie-ml-service --detach
         continue-on-error: false
 
-      # ── Deploy Frontend to Vercel ──
       - name: Install Vercel CLI
         run: npm i -g vercel
 
       - name: Deploy Frontend to Vercel
+        working-directory: reactapp
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           vercel deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }} --scope=${{ secrets.VERCEL_ORG_ID }}
 
-      # ── Post-Deployment Smoke/Health Checks ──
       - name: Wait for service startup
         run: sleep 15
 

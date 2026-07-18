@@ -35,6 +35,9 @@ cd ../reactapp && npm install
 
 # ML Service
 cd ../ml-service && pip install -r requirements.txt
+
+# Investment data artifacts
+cd .. && node scripts/sync_data.js --check
 ```
 
 ### Running Locally
@@ -60,6 +63,9 @@ cd ml-service && uvicorn main:app --reload --port 8000
 3. **Make your changes** following the coding standards below
 4. **Run tests** before submitting:
    ```bash
+   # Investment data artifacts
+   node scripts/sync_data.js --check
+
    # Frontend
    cd reactapp && npm test
 

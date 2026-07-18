@@ -5,11 +5,6 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "predev": "node ../scripts/sync_data.js",
-    "prestart": "node ../scripts/sync_data.js",
-    "pretest": "node ../scripts/sync_data.js",
-    "preseed": "node ../scripts/sync_data.js",
-    "pretypecheck": "node ../scripts/sync_data.js",
     "dev": "node --watch server.js",
     "start": "node server.js",
     "test": "node --test --test-force-exit",

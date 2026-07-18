@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import authRoutes from '../routes/auth.js';
 import { verifyJWT } from '../middleware/authMiddleware.js';
 import { errorHandler } from '../middleware/errorHandler.js';
+import { withServer, jsonRequest as jsonFetch } from '../test-utils/httpTestUtils.js';
 
 process.env.JWT_SECRET = 'logout-integration-test-secret';
 process.env.NODE_ENV = 'test';
@@ -23,31 +24,9 @@ function buildApp() {
   return app;
 }
 
-async function withServer(fn) {
-  const server = buildApp().listen(0);
-  await new Promise(resolve => server.once('listening', resolve));
-  try {
-    return await fn(`http://127.0.0.1:${server.address().port}`);
-  } finally {
-    await new Promise(resolve => server.close(resolve));
-  }
-}
-
-async function jsonFetch(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'connection': 'close',
-      ...(options.body ? { 'content-type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  const text = await response.text();
-  return { response, body: text ? JSON.parse(text) : null };
-}
 
 test('JWT logout revokes token and blocks subsequent access', async () => {
-  await withServer(async (baseUrl) => {
+  await withServer(buildApp(), async (baseUrl) => {
     const jti = 'test-uuid-jti-12345';
     // 1. Directly sign a valid token
     const token = jwt.sign(
