@@ -182,8 +182,11 @@ test('mlClient posts to enriched endpoint and falls back on service failure', as
   });
 
   assert.match(postedUrl, /\/predict\/enriched$/);
-  assert.equal(postedHeaders?.['X-API-Key'], process.env.ML_SERVICE_API_KEY || 'wealthgenie_secret_api_key_2026');
-  assert.equal(getHeaders?.['X-API-Key'], process.env.ML_SERVICE_API_KEY || 'wealthgenie_secret_api_key_2026');
+  // When ML_SERVICE_API_KEY is set, the header must carry its value.
+  // When unset, mlClient intentionally omits the header (security: no empty key).
+  const expectedKey = process.env.ML_SERVICE_API_KEY || undefined;
+  assert.equal(postedHeaders?.['X-API-Key'], expectedKey);
+  assert.equal(getHeaders?.['X-API-Key'], expectedKey);
   assert.equal(prediction.primary, 'ETF');
   assert.equal(health.status, 'ok');
   assert.equal(fallback.fallback, true);
