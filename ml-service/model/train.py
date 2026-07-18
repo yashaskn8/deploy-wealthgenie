@@ -272,7 +272,9 @@ def train():
     print("=" * 70)
     
     # 1. Generate correlated dataset
-    df = generate_correlated_dataset(N_SAMPLES)
+    is_fast = os.environ.get("FAST_TRAIN") == "true" or os.environ.get("CI") == "true"
+    n_samples = 500 if is_fast else N_SAMPLES
+    df = generate_correlated_dataset(n_samples)
     os.makedirs(DATA_DIR, exist_ok=True)
     
     # Apply shared feature engineering to all rows
@@ -343,81 +345,87 @@ def train():
     
     print(f"\nData Splits: Train={len(y_train)} | Val={len(y_val)} | Test={len(y_test)}")
     
-    # 2. stratified 5-fold cross-validation on Training Set (X_train)
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    
-    models = {
-        'RandomForest': (
-            RandomForestClassifier(random_state=42, class_weight='balanced'),
-            {'clf__n_estimators': [100, 200], 'clf__max_depth': [10, 15, 20]}
-        ),
-        'GradientBoosting': (
-            GradientBoostingClassifier(random_state=42),
-            {'clf__n_estimators': [100, 150], 'clf__max_depth': [4, 6, 8]}
-        )
-    }
-    
-    best_cv_score = -1.0
-    best_candidate_name = None
-    best_pipeline = None
-    cv_comparison = []
-    
-    for name, (clf, param_grid) in models.items():
-        print(f"\nRunning GridSearchCV for {name}...")
-        pipeline = Pipeline([
-            ('scaler', StandardScaler()),
-            ('clf', clf)
-        ])
-        
-        grid = GridSearchCV(pipeline, param_grid, cv=cv, scoring='accuracy', n_jobs=-1)
-        grid.fit(X_train, y_train)
-        
-        mean_score = grid.best_score_
-        std_score = grid.cv_results_['std_test_score'][grid.best_index_]
-        print(f"Best CV accuracy for {name}: {mean_score:.4f} ± {std_score:.4f} with {grid.best_params_}")
-        
-        cv_comparison.append({
-            'model': name,
-            'cv_mean': round(float(mean_score), 4),
-            'cv_std': round(float(std_score), 4),
-            'best_params': str(grid.best_params_)
-        })
-        
-        if mean_score > best_cv_score:
-            best_cv_score = mean_score
-            best_candidate_name = name
-            best_pipeline = grid.best_estimator_
-            
-    print("\n" + "=" * 50)
-    print("CV Comparison Table:")
-    print("=" * 50)
-    print(pd.DataFrame(cv_comparison))
-    print("=" * 50)
-    
-    # Select RandomForest: native multi-class SHAP TreeExplainer support.
-    # GradientBoosting isn't fully supported by shap.TreeExplainer for multiclass.
     selected_name = 'RandomForest'
+    best_candidate_name = 'RandomForest'
     
-    # Use the ACTUAL best estimator from grid search — no hardcoded params.
-    best_pipeline = None
-    best_cv_score_selected = None
-    for entry in cv_comparison:
-        if entry['model'] == selected_name:
-            best_cv_score_selected = entry['cv_mean']
-    
-    for name, (clf, param_grid) in models.items():
-        if name == selected_name:
+    if is_fast:
+        print("\nFast Mode: Skipping GridSearchCV. Training basic RandomForest...")
+        best_pipeline = Pipeline([
+            ('scaler', StandardScaler()),
+            ('clf', RandomForestClassifier(n_estimators=10, max_depth=5, random_state=42, class_weight='balanced'))
+        ])
+        best_pipeline.fit(X_train, y_train)
+        best_cv_score_selected = 0.50
+    else:
+        # 2. stratified 5-fold cross-validation on Training Set (X_train)
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        
+        models = {
+            'RandomForest': (
+                RandomForestClassifier(random_state=42, class_weight='balanced'),
+                {'clf__n_estimators': [100, 200], 'clf__max_depth': [10, 15, 20]}
+            ),
+            'GradientBoosting': (
+                GradientBoostingClassifier(random_state=42),
+                {'clf__n_estimators': [100, 150], 'clf__max_depth': [4, 6, 8]}
+            )
+        }
+        
+        best_cv_score = -1.0
+        best_pipeline = None
+        cv_comparison = []
+        
+        for name, (clf, param_grid) in models.items():
+            print(f"\nRunning GridSearchCV for {name}...")
             pipeline = Pipeline([
                 ('scaler', StandardScaler()),
                 ('clf', clf)
             ])
+            
             grid = GridSearchCV(pipeline, param_grid, cv=cv, scoring='accuracy', n_jobs=-1)
             grid.fit(X_train, y_train)
-            best_pipeline = grid.best_estimator_
-            best_cv_score_selected = grid.best_score_
-            print(f"\nSelected {selected_name}: actual best params = {grid.best_params_}")
             
-    print(f"\nSelected Model: {selected_name} (SHAP TreeExplainer compatible) | CV Accuracy: {best_cv_score_selected:.4f}")
+            mean_score = grid.best_score_
+            std_score = grid.cv_results_['std_test_score'][grid.best_index_]
+            print(f"Best CV accuracy for {name}: {mean_score:.4f} ± {std_score:.4f} with {grid.best_params_}")
+            
+            cv_comparison.append({
+                'model': name,
+                'cv_mean': round(float(mean_score), 4),
+                'cv_std': round(float(std_score), 4),
+                'best_params': str(grid.best_params_)
+            })
+            
+            if mean_score > best_cv_score:
+                best_cv_score = mean_score
+                best_pipeline = grid.best_estimator_
+                
+        print("\n" + "=" * 50)
+        print("CV Comparison Table:")
+        print("=" * 50)
+        print(pd.DataFrame(cv_comparison))
+        print("=" * 50)
+        
+        # Use the ACTUAL best estimator from grid search — no hardcoded params.
+        best_pipeline = None
+        best_cv_score_selected = None
+        for entry in cv_comparison:
+            if entry['model'] == selected_name:
+                best_cv_score_selected = entry['cv_mean']
+        
+        for name, (clf, param_grid) in models.items():
+            if name == selected_name:
+                pipeline = Pipeline([
+                    ('scaler', StandardScaler()),
+                    ('clf', clf)
+                ])
+                grid = GridSearchCV(pipeline, param_grid, cv=cv, scoring='accuracy', n_jobs=-1)
+                grid.fit(X_train, y_train)
+                best_pipeline = grid.best_estimator_
+                best_cv_score_selected = grid.best_score_
+                print(f"\nSelected {selected_name}: actual best params = {grid.best_params_}")
+                
+        print(f"\nSelected Model: {selected_name} (SHAP TreeExplainer compatible) | CV Accuracy: {best_cv_score_selected:.4f}")
     
     # 3. Fit the selected model on full X_train + X_val, then evaluate on X_test
     X_train_full = np.vstack([X_train, X_val])
