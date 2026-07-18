@@ -1,0 +1,41 @@
+{
+  "name": "wealthgenie-server",
+  "version": "1.0.0",
+  "description": "WealthGenie Express.js Backend - Tax-optimized AI financial advisory",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "predev": "node ../scripts/sync_data.js",
+    "prestart": "node ../scripts/sync_data.js",
+    "pretest": "node ../scripts/sync_data.js",
+    "preseed": "node ../scripts/sync_data.js",
+    "pretypecheck": "node ../scripts/sync_data.js",
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "test": "node --test --test-force-exit",
+    "seed": "node config/seedInstruments.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-mongo-sanitize": "^2.2.0",
+    "express-rate-limit": "^8.5.0",
+    "fast-check": "^4.8.0",
+    "helmet": "^8.0.0",
+    "joi": "^18.1.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.8.0",
+    "morgan": "^1.10.0",
+    "rate-limit-redis": "^5.0.0",
+    "redis": "^4.7.0",
+    "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  }
+}

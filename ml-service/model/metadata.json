@@ -1,0 +1,93 @@
+{
+  "model_name": "RandomForest",
+  "rf_accuracy": 0.6562,
+  "best_cv_accuracy": 0.675,
+  "test_accuracy": 0.6562,
+  "trained_at": "2026-07-06T08:28:48.137353+00:00",
+  "n_samples": 20000,
+  "n_features": 16,
+  "feature_names": [
+    "age",
+    "annual_income",
+    "monthly_savings",
+    "investment_horizon",
+    "liquid_savings",
+    "existing_debt",
+    "dependents",
+    "emergency_fund_months",
+    "risk_score",
+    "stated_tolerance_score",
+    "savings_rate",
+    "debt_to_income_ratio",
+    "emergency_fund_adequacy_ratio",
+    "risk_capacity_vs_stated_tolerance_gap",
+    "horizon_adjusted_urgency_score",
+    "dependents_adjusted_burden_score"
+  ],
+  "confusion_matrix": [
+    [
+      543,
+      3,
+      260,
+      6,
+      78,
+      136
+    ],
+    [
+      0,
+      32,
+      13,
+      3,
+      0,
+      0
+    ],
+    [
+      293,
+      22,
+      882,
+      149,
+      9,
+      6
+    ],
+    [
+      5,
+      19,
+      202,
+      826,
+      0,
+      0
+    ],
+    [
+      71,
+      0,
+      10,
+      0,
+      102,
+      0
+    ],
+    [
+      87,
+      0,
+      3,
+      0,
+      0,
+      240
+    ]
+  ],
+  "per_class_f1": {
+    "Debt_MF": 0.5363,
+    "ELSS": 0.5161,
+    "ETF": 0.6459,
+    "Equity_MF": 0.8114,
+    "FD": 0.5484,
+    "RBI_Bond": 0.6742
+  },
+  "brier_scores": {
+    "Debt_MF": 0.14612,
+    "ELSS": 0.00867,
+    "ETF": 0.15863,
+    "Equity_MF": 0.06836,
+    "FD": 0.02783,
+    "RBI_Bond": 0.03713
+  }
+}

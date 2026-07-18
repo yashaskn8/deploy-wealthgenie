@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: wealthgenie-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: wealthgenie-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: wealthgenie-ml-service
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - ML_SERVICE_API_KEY=${ML_SERVICE_API_KEY:?Set ML_SERVICE_API_KEY in your environment}
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:5000,http://localhost:3000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: wealthgenie-server
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/wealthgenie
+      - REDIS_URL=redis://redis:6379
+      - ML_SERVICE_URL=http://ml-service:8000
+      - ML_SERVICE_API_KEY=${ML_SERVICE_API_KEY:?Set ML_SERVICE_API_KEY in your environment}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment (min 32 chars)}
+      - JWT_EXPIRES_IN=7d
+      - CORS_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+
+  reactapp:
+    build:
+      context: ./reactapp
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/api
+    container_name: wealthgenie-reactapp
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+
+volumes:
+  mongodb_data:
+  redis_data:

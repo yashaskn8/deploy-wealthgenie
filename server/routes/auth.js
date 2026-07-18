@@ -1,0 +1,122 @@
+import { Router } from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import User from '../models/User.js';
+import { validate, registerSchema, loginSchema } from '../validation/schemas.js';
+import { asyncHandler, createError } from '../middleware/errorHandler.js';
+import { verifyJWT } from '../middleware/authMiddleware.js';
+import { blacklistToken } from '../config/redis.js';
+
+const router = Router();
+
+/**
+ * POST /api/auth/register
+ * Creates a new user account and returns a JWT.
+ */
+router.post('/register', validate(registerSchema), asyncHandler(async (req, res) => {
+  const { name, email, password } = req.body;
+
+  // SECURITY: Hash password FIRST, before checking email existence.
+  // This ensures both "email exists" and "email new" paths take the same ~250ms
+  // from bcrypt, preventing timing-based email enumeration attacks.
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  const existing = await User.findOne({ email }).lean();
+  if (existing) {
+    throw createError(409, `Registration attempt with existing email: ${email}`, 'Email already registered.');
+  }
+
+  // Wrap create in try/catch to handle the race condition where two concurrent
+  // requests both pass the findOne check but only one can insert (unique index).
+  let user;
+  try {
+    user = await User.create({ name: name.trim(), email, passwordHash });
+  } catch (err) {
+    if (err.code === 11000) {
+      // MongoDB duplicate key error — concurrent registration with same email
+      throw createError(409, `Concurrent registration race for: ${email}`, 'Email already registered.');
+    }
+    throw err; // Re-throw non-duplicate errors
+  }
+
+  const jti = crypto.randomUUID();
+  const token = jwt.sign(
+    { userId: user._id, email: user.email, jti },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  );
+
+  res.status(201).json({
+    token,
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
+  });
+}));
+
+/**
+ * POST /api/auth/login
+ * Authenticates a user and returns a JWT.
+ */
+// Dummy hash for constant-time rejection when user not found.
+// This prevents timing attacks that reveal email existence.
+const DUMMY_HASH = '$2a$12$LJ3m4ys3Lz0Yqn4F5s5sUuQ7v8r9t0u1v2w3x4y5z6a7b8c9d0e1f2';
+
+router.post('/login', validate(loginSchema), asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+
+  // Use the same error message for both "user not found" and "wrong password"
+  // to prevent email enumeration attacks
+  const INVALID_CREDS = 'Invalid credentials.';
+
+  // Must explicitly select passwordHash (hidden by default via select:false)
+  const user = await User.findOne({ email }).select('+passwordHash');
+
+  // SECURITY: Always run bcrypt.compare to maintain constant response time.
+  // Without this, a missing user returns ~0ms (no compare) vs ~200ms (with compare),
+  // creating a timing oracle that reveals whether an email is registered.
+  const hashToCompare = user ? user.passwordHash : DUMMY_HASH;
+  const valid = await bcrypt.compare(password, hashToCompare);
+
+  if (!user || !valid) {
+    throw createError(401, `Failed login for email: ${email}`, INVALID_CREDS);
+  }
+
+  const jti = crypto.randomUUID();
+  const token = jwt.sign(
+    { userId: user._id, email: user.email, jti },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  );
+
+  res.json({
+    token,
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    },
+  });
+}));
+
+/**
+ * POST /api/auth/logout [Protected]
+ * Revokes the current user's session JWT.
+ */
+router.post('/logout', verifyJWT, asyncHandler(async (req, res) => {
+  const { jti, exp } = req.user;
+  if (jti && exp) {
+    const remainingTime = exp - Math.floor(Date.now() / 1000);
+    if (remainingTime > 0) {
+      await blacklistToken(jti, remainingTime);
+    }
+  }
+  res.json({ message: 'Logout successful.' });
+}));
+
+export default router;

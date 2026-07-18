@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+test
+*.test.js
+test_*.js
+.git
+.github
+*.md
+dist
+.DS_Store
+Thumbs.db

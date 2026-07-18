@@ -1,0 +1,132 @@
+/* ─── Jargon Buster Tooltip ─────────────────────────────────── */
+
+.jargon-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: help;
+  transition: all 0.2s ease;
+  padding-bottom: 0px;
+}
+
+.jargon-trigger:hover {
+  color: #c4b5fd;
+}
+
+.jargon-help-icon {
+  opacity: 0.3;
+  flex-shrink: 0;
+  transition: opacity 0.2s ease;
+}
+
+.jargon-trigger:hover .jargon-help-icon {
+  opacity: 0.7;
+  color: #8b5cf6;
+}
+
+/* Tooltip Popup — renders via portal into document.body */
+.jargon-tooltip {
+  position: fixed;
+  z-index: 999999;
+  width: 300px;
+  padding: 16px;
+  background: rgba(8, 12, 28, 0.97);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 14px;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  backdrop-filter: blur(20px);
+  animation: jargonFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+/* Below placement (default) */
+.jargon-tooltip--below {
+  transform: translateY(0);
+}
+
+.jargon-tooltip--below .jargon-tooltip-arrow {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px;
+  height: 10px;
+  background: rgba(8, 12, 28, 0.97);
+  border-left: 1px solid rgba(139, 92, 246, 0.2);
+  border-top: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+/* Above placement */
+.jargon-tooltip--above {
+  transform: translateY(-100%);
+}
+
+.jargon-tooltip--above .jargon-tooltip-arrow {
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px;
+  height: 10px;
+  background: rgba(8, 12, 28, 0.97);
+  border-right: 1px solid rgba(139, 92, 246, 0.2);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+@keyframes jargonFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.jargon-tooltip--above {
+  animation-name: jargonFadeInAbove;
+}
+
+@keyframes jargonFadeInAbove {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-100% + 4px));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-100%);
+  }
+}
+
+/* Title */
+.jargon-tooltip-title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #c4b5fd;
+  letter-spacing: -0.01em;
+  margin-bottom: 3px;
+}
+
+/* Technical short definition */
+.jargon-tooltip-short {
+  font-size: 0.65rem;
+  color: #64748b;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Plain English explanation */
+.jargon-tooltip-plain {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  line-height: 1.55;
+  font-weight: 400;
+}

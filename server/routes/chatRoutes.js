@@ -1,0 +1,84 @@
+/**
+ * Chat Routes — POST /api/chat/message, GET /api/chat/history, DELETE /api/chat/session/:sessionId
+ */
+import { Router } from 'express';
+import crypto from 'crypto';
+import { verifyJWT, isValidObjectId } from '../middleware/authMiddleware.js';
+import { asyncHandler, createError } from '../middleware/errorHandler.js';
+import { validate, chatMessageSchema } from '../validation/schemas.js';
+import { processChat } from '../services/geminiChatService.js';
+import ConversationHistory from '../models/ConversationHistory.js';
+
+const router = Router();
+
+/**
+ * POST /api/chat/message [Protected]
+ * Send a message to the AI chat assistant.
+ */
+router.post('/message', verifyJWT, validate(chatMessageSchema), asyncHandler(async (req, res) => {
+  const { message, session_id } = req.body;
+
+  const sessionId = session_id || crypto.randomUUID();
+
+  const result = await processChat({
+    userId: req.user.userId,
+    user: req.user,
+    message: message.trim(),
+    sessionId,
+  });
+
+  res.json(result);
+}));
+
+/**
+ * GET /api/chat/history [Protected]
+ * Retrieve conversation history for the current user.
+ */
+router.get('/history', verifyJWT, asyncHandler(async (req, res) => {
+  const { session_id } = req.query;
+
+  // Clamp limit to prevent excessive queries
+  const rawLimit = parseInt(req.query.limit) || 50;
+  const limit = Math.min(Math.max(rawLimit, 1), 200);
+
+  const query = { userId: req.user.userId, is_active: true };
+  if (session_id && typeof session_id === 'string' && session_id.length <= 100) {
+    query.session_id = session_id;
+  }
+
+  const conversations = await ConversationHistory
+    .find(query)
+    .sort({ updated_at: -1 })
+    .limit(limit)
+    .select('session_id messages message_count created_at updated_at')
+    .lean();
+
+  res.json({ conversations });
+}));
+
+/**
+ * DELETE /api/chat/session/:sessionId [Protected]
+ * Soft-delete a chat session (marks as inactive).
+ */
+router.delete('/session/:sessionId', verifyJWT, asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+
+  if (!sessionId || typeof sessionId !== 'string' || sessionId.length > 100) {
+    throw createError(400, 'Invalid sessionId', 'Invalid session ID.');
+  }
+
+  const result = await ConversationHistory.findOneAndUpdate(
+    { userId: req.user.userId, session_id: sessionId, is_active: true },
+    { is_active: false },
+    { new: true }
+  );
+
+  if (!result) {
+    // Return success even if not found — idempotent delete
+    return res.json({ message: 'Session cleared.' });
+  }
+
+  res.json({ message: 'Session cleared.' });
+}));
+
+export default router;

@@ -1,0 +1,56 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Environment files — NEVER commit secrets
+.env
+server/.env
+ml-service/.env
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+.pytest_cache
+
+# ML Model artifacts — regenerate via: python model/train.py
+*.pkl
+ml-service/model/model.pkl
+ml-service/model/label_encoder.pkl
+ml-service/model/decision_tree.pkl
+ml-service/data/investment_profiles.csv
+
+# Development artifacts
+scratch/
+brain/
+
+tmp_pycache/
+
