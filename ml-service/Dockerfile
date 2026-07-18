@@ -14,9 +14,14 @@ RUN groupadd -r mlgroup && useradd -r -g mlgroup mluser
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
-# Copy application source and model artefacts
+# Copy application source
 COPY main.py schemas.py explainer.py feature_engineering.py ./
-COPY model/model.pkl model/label_encoder.pkl model/decision_tree.pkl model/metadata.json ./model/
+
+# Copy model training script, metadata, and training data
+COPY model/train.py model/metadata.json ./model/
+
+# Train the model during build to generate .pkl artifacts
+RUN python model/train.py
 
 # Switch to non-root user
 USER mluser
