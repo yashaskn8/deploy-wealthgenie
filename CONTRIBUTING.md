@@ -23,8 +23,8 @@ WealthGenie is a three-tier application:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yashaskn8/WealthGenie-AI-Based-Personalized-Financial-Advisory-System.git
-cd WealthGenie-AI-Based-Personalized-Financial-Advisory-System
+git clone https://github.com/yashaskn8/deploy-wealthgenie.git
+cd deploy-wealthgenie
 
 # Backend
 cd server && npm install && cp .env.example .env
@@ -117,7 +117,7 @@ cd ml-service && uvicorn main:app --reload --port 8000
 | Layer | Framework | Command |
 |:---|:---|:---|
 | Frontend | Vitest + jsdom | `cd reactapp && npm test` |
-| Backend | Jest | `cd server && npm test` |
+| Backend | Node.js Test Runner | `cd server && npm test` |
 | ML Service | Pytest | `cd ml-service && pytest` |
 
 ## 📜 License
