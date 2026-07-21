@@ -86,24 +86,56 @@ Financial planning tools available to Indian retail investors typically provide:
 
 WealthGenie operates on a **decoupled three-tier architecture** with three independently running applications communicating over REST APIs:
 
-```
-                  ┌─────────────────────────────────────────┐
-                  │        React 19 SPA (Presentation)      │
-                  │             Vite @ Port 5173            │
-                  └────────────────────┬────────────────────┘
-                                       │ HTTP / REST
-                                       ▼
-                  ┌─────────────────────────────────────────┐
-                  │     Node.js / Express (Application)     │
-                  │           Express @ Port 5000           │
-                  └───────────┬─────────────────┬───────────┘
-                              │                 │
-                   MongoDB    │                 │ HTTP / REST (API Key)
-                   & Redis    ▼                 ▼
-                  ┌──────────────┐   ┌──────────────────────┐
-                  │  MongoDB     │   │ FastAPI Microservice  │
-                  │  Redis       │   │   Python @ Port 8000  │
-                  └──────────────┘   └──────────────────────┘
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Investor as User / Investor
+    participant Frontend as React 19 SPA (Vite)
+    participant Backend as Express.js Server
+    participant Redis as Upstash Redis (Cache/Limiter)
+    participant DB as MongoDB (Mongoose)
+    participant ML as FastAPI Microservice
+    participant LLM as Google Gemini / Groq Llama
+
+    Investor->>Frontend: Submit Financial Profile
+    Frontend->>Backend: POST /api/profile/build (Bearer JWT)
+    Backend->>DB: Save/Update Net Taxable Income & Horizon
+    DB-->>Backend: Return profileId
+    Backend-->>Frontend: Profile Confirmed / Updated
+
+    Investor->>Frontend: Request AI Advisory & Recommendation
+    Frontend->>Backend: POST /api/recommend (profileId)
+    Backend->>Redis: Check cache for recommendation vector
+    alt Cache Hit
+        Redis-->>Backend: Return cached recommendation
+    else Cache Miss
+        Backend->>ML: POST /predict (Age, Savings, Income, Horizon, etc.)
+        Note over ML: Run feature engineering pipeline (16 features)
+        Note over ML: Random Forest Prediction + TreeSHAP computation
+        ML-->>Backend: Return predicted categories & Shapley attributions
+        Backend->>Redis: Cache recommendation vector (TTL 30m)
+    end
+    Backend->>Backend: Run Portfolio Optimizer (MinVar/MaxSharpe/ERC)
+    Backend->>DB: Read 109 Instruments metadata (expected yields, lock-ins)
+    DB-->>Backend: Instrument documents
+    Backend->>Backend: Run Progressive Tax & QMC Projection Engine
+    Backend-->>Frontend: Return recommendation details + allocations + QMC wealth bands + TreeSHAP attributions
+    Frontend->>Investor: Render Recommendation Dashboard (allocation donuts & P10/P50/P90 bands)
+
+    Investor->>Frontend: Type query in GenieChat
+    Frontend->>Backend: POST /api/chat/message (user message + profile context)
+    Backend->>Redis: Check cached response for prompt signature
+    alt Cache Hit
+        Redis-->>Backend: Return cached advisory response
+    else Cache Miss
+        Backend->>LLM: API Request (Gemini 2.0 / Groq failover) with system prompts
+        LLM-->>Backend: Generate Advisory response
+        Backend->>Redis: Cache response (TTL 30m)
+        Backend->>DB: Append to ConversationHistory Document
+    end
+    Backend-->>Frontend: Stream/Send text answer
+    Frontend->>Investor: Display natural language financial guidance
 ```
 
 ### 📱 Application 1 — Frontend (`reactapp/`)
@@ -167,6 +199,52 @@ Additional engines on the frontend:
 - `engine/taxComputation.js` — Client-side tax computation for real-time UI updates
 - `engine/goalFiltering.js` — Goal-based instrument filtering logic
 - `services/postTaxCalculator.js` — Post-tax capital gains and inflation drag calculator
+
+### 💰 Progressive Tax & Marginal Relief Decision Flow
+
+This diagram describes the computational logic used inside `services/taxEngine.js` to handle Section 87A rebate discontinuity (the ₹12L net taxable income cliff) and marginal relief:
+
+```mermaid
+flowchart TD
+    Start(["Start Tax Calculation"]) --> Deduct["Apply Standard Deduction<br/>(₹75,000)"]
+    Deduct --> Taxable["Compute Net Taxable Income<br/>(Gross Income - Deductions)"]
+    
+    Taxable --> SlabCalc["Apply Progressive Slabs (FY 2025-26)<br/>- Up to ₹3L: 0%<br/>- ₹3L to ₹7L: 5%<br/>- ₹7L to ₹10L: 10%<br/>- ₹10L to ₹12L: 15%<br/>- ₹12L to ₹15L: 20%<br/>- Above ₹15L: 30%"]
+    
+    SlabCalc --> GrossTax["Get Gross Tax Liability"]
+    
+    GrossTax --> IncomeCheck{"Is Net Taxable Income<br/>≤ ₹12,00,000?"}
+    
+    IncomeCheck -- Yes --> FullRebate["Apply Full Section 87A Rebate<br/>(Tax liability reduced to ₹0)"] --> TaxBeforeCess["Tax before Cess = ₹0"]
+    
+    IncomeCheck -- No --> CliffCheck{"Is Net Taxable Income<br/>between ₹12,00,001 and ₹12,50,000?"}
+    
+    CliffCheck -- Yes --> MarginalRelief["Compute Marginal Relief under Section 87A:<br/>- Excess Income = Taxable Income - ₹12,00,000<br/>- Gross Tax Payable on net income<br/>- Relief = Gross Tax - Excess Income<br/>- Net Tax = Excess Income"] --> TaxBeforeCess
+    
+    CliffCheck -- No --> StandardTax["Net Tax = Gross Tax Liability"] --> TaxBeforeCess
+    
+    TaxBeforeCess --> Surcharge{"Is Net Taxable Income<br/>> ₹50,00,000?"}
+    
+    Surcharge -- Yes --> ApplySurcharge["Apply Surcharge based on income brackets<br/>(10%, 15%, or 25%)<br/>+ Apply Surcharge Marginal Relief if applicable"] --> Cess
+    Surcharge -- No --> Cess["Apply 4% Health & Education Cess"]
+    
+    Cess --> FinalTax(["Final Tax Liability"])
+```
+
+### 🔮 Quasi-Monte Carlo Stochastic Simulation Workflow
+
+This diagram outlines the low-discrepancy mathematical simulation executed in `services/monteCarloEngine.js` to construct portfolio wealth projection bands:
+
+```mermaid
+flowchart TD
+    QMCStart(["Start Monte Carlo Simulation"]) --> Params["Read Portfolio Weights (w), Horizon (N),<br/>Expected Yields (μ), & Covariance Matrix (Σ)"]
+    Params --> Halton["Generate 2-Dimensional Halton Sequences<br/>(Low-discrepancy quasi-random sequences)"]
+    Halton --> BoxMuller["Apply Inverse Normal CDF Transformation<br/>(Transform sequences to normal distributions N(0, 1))"]
+    BoxMuller --> Cholesky["Decompose Covariance Matrix via Cholesky decomposition<br/>(Capture correlation between asset classes)"]
+    Cholesky --> SimPath["Execute 10,000 simulation path runs:<br/>w_t = w_{t-1} * (1 + monthly_SIP + stochastic_growth)"]
+    SimPath --> CalcBands["Sort terminal wealth values:<br/>- P10 (10th percentile - pessimistic)<br/>- P50 (50th percentile - median)<br/>- P90 (90th percentile - optimistic)"]
+    CalcBands --> EndBands(["Renders Recharts ProjectionBand in UI"])
+```
 
 ---
 
@@ -588,6 +666,78 @@ The `feature_engineering.py` module transforms raw investor inputs into 16 model
 | emergency_fund_months | risk_capacity_vs_stated_tolerance_gap |
 | risk_score, stated_tolerance_score | horizon_adjusted_urgency_score |
 | | dependents_adjusted_burden_score |
+
+### 📊 AI Recommendation & Portfolio Optimization Pipeline
+
+This diagram shows the complete data transformation pathway from raw inputs, model predictions, and explanation mapping to final portfolio weights:
+
+```mermaid
+flowchart TD
+    subgraph RawInputs ["1. Raw Investor Inputs"]
+        Age["Age (18-80)"]
+        Income["Annual Income"]
+        Savings["Monthly Savings"]
+        Horizon["Investment Horizon"]
+        Liquid["Liquid Savings"]
+        Debt["Existing Debt / EMIs"]
+        Dep["Dependents"]
+        Emg["Emergency Fund Months"]
+        Risk["Risk Appetite Score"]
+    end
+
+    subgraph FE ["2. Feature Engineering Pipeline (feature_engineering.py)"]
+        direction TB
+        F1["Savings Rate = Monthly Savings / Monthly Income"]
+        F2["Debt-to-Income Ratio = Existing Debt / Annual Income"]
+        F3["Emergency Fund Adequacy = Liquid Savings / Monthly Expenses"]
+        F4["Horizon-Adjusted Urgency = (80 - Age) / Horizon"]
+        F5["Risk Capacity-Tolerance Gap = Risk Capacity - Stated Tolerance"]
+        F6["Dependents-Adjusted Burden = Dependents * Fixed EMIs"]
+    end
+
+    RawInputs --> FE
+
+    subgraph ML ["3. ML Classifier & SHAP Engine (ml-service)"]
+        direction TB
+        RF["Random Forest Ensemble Classifier<br/>(200 Decision Trees)"]
+        Shap["TreeSHAP Explainer<br/>(Exact Shapley Values)"]
+        Pred["Class Probabilities<br/>(Equity MF, Debt MF, ETF, ELSS, FD, RBI Bond)"]
+        Attr["Shapley Feature Attributions<br/>(Contributions for each feature)"]
+    end
+
+    FE -->|16-Dimensional Feature Vector| RF
+    RF --> Pred
+    RF --> Shap
+    Shap --> Attr
+
+    subgraph Optimizer ["4. Simplex Projected Portfolio Optimizer (portfolioEngine.js)"]
+        direction TB
+        Weights["Initial Weights (from ML class probabilities)"]
+        Strat{"Optimization Strategy"}
+        MinVar["Minimum Variance<br/>Min wᵀΣw"]
+        MaxSharpe["Maximum Sharpe<br/>Max (wᵀμ - Rf) / √(wᵀΣw)"]
+        ERC["Equal Risk Contribution<br/>Equalize Marginal Risk Contributions"]
+        Proj["Euclidean Simplex Projection<br/>Enforces Σw_i = 1 and w_i ≥ 0"]
+    end
+
+    Pred --> Weights
+    Weights --> Strat
+    Strat --> MinVar
+    Strat --> MaxSharpe
+    Strat --> ERC
+    MinVar --> Proj
+    MaxSharpe --> Proj
+    ERC --> Proj
+
+    subgraph Output ["5. Unified Recommendation Output"]
+        Merge["Merge allocations with 109-instrument static metadata"]
+        Final["Renders Dashboard & Rebalancer Screens"]
+    end
+
+    Proj --> Merge
+    Attr --> Merge
+    Merge --> Final
+```
 
 ### TreeSHAP Explainability
 
